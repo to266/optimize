@@ -1,32 +1,28 @@
 extern crate ndarray;
 extern crate num_traits;
 
-use ndarray::prelude::*;
+// use ndarray::prelude::*;
 use std::fmt::Debug;
 
-use num_traits::NumOps;
+// use num_traits::NumOps;
 
-pub struct Minimizer {
-}
+pub struct Minimizer {}
 
-impl<'a> Minimizer {
-
-    pub fn minimize<F, A:'a, R: 'a, N: 'a>(&self, func: F, args: A)
-    where F: Fn(A) -> &'a R,
-          A: Clone + AsArray<'a, N>,
-          R: AsArray<'a, N> + Debug,
-          N: NumOps
+impl Minimizer {
+    pub fn minimize<F, A, R>(&self, func: F, args: &A) 
+    where
+        F: Fn(&A) -> R,
+        A: ?Sized,
+        R: Debug
     {
-        let mut ans = func(args);
-        println!("{:?}", ans);
+        let ans = func(args);
+        println!("calculated this: {:?}", ans);
     }
 
     pub fn new() -> Self {
-        Self{}
+        Self {}
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
