@@ -9,10 +9,14 @@ use ndarray::prelude::*;
 use ndarray::Zip;
 
 pub struct Minimizer {
-    ulps: i64
+    ulps: i64,
 }
 
 impl Minimizer {
+    pub fn new(ulps: i64) -> Self {
+        Self { ulps: ulps }
+    }
+
     pub fn minimize<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
     where
         F: Fn(ArrayView1<f64>) -> f64,
@@ -20,38 +24,57 @@ impl Minimizer {
         self.minimize_neldermead(func, args)
     }
 
-fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
-    // order sim[0,..] by fsim
-    let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
-    let mut order: Vec<usize> = (0..fsim.len()).collect();
-    order.sort_unstable_by(|&a, &b| fsim[a].approx_cmp_ulps(&fsim[b], self.ulps));
-    for (k, s) in order.iter().enumerate() {
-        _tmp.slice_mut(s![k, ..]).assign(&sim.slice(s![*s, ..]));
+    fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
+        // order sim[0,..] by fsim
+        let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
+        let mut order: Vec<usize> = (0..fsim.len()).collect();
+        order.sort_unstable_by(|&a, &b| fsim[a].approx_cmp_ulps(&fsim[b], self.ulps));
+        for (k, s) in order.iter().enumerate() {
+            _tmp.slice_mut(s![k, ..]).assign(&sim.slice(s![*s, ..]));
+        }
+        sim.assign(&_tmp);
+        // order fsim
+        let mut _tmp = fsim.to_vec();
+        _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, self.ulps));
+        fsim.assign(&Array1::<f64>::from_vec(_tmp));
     }
-    sim.assign(&_tmp);
-    // order fsim
-    let mut _tmp = fsim.to_vec();
-    _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, self.ulps));
-    fsim.assign(&Array1::<f64>::from_vec(_tmp));
-}
-
 
     fn minimize_neldermead<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
     where
         F: Fn(ArrayView1<f64>) -> f64,
     {
-        let mut x0 = args.to_owned();
+        let mut x0 = Array1::<f64>::from_iter(args.iter().map(|&v| v as f64));
         let n: usize = x0.len();
-
-        let rho = 1f64;
-        let chi = 2f64;
-        let psi = 0.5f64;
-        let sigma = 0.5f64;
+        
+        // TODO: add parameters to the function call
+        let adaptive = false;
         let xatol = 1e-4f64;
+        let maxiter = 200 * n;
 
-        let mut sim = Array2::<f64>::zeros((n + 1, n));
+        let rho: f64;
+        let chi: f64;
+        let psi: f64;
+        let sigma:f64;
+
+        if adaptive {
+            let dim = n as f64;
+            rho = 1f64;
+            chi = 1f64 + 2. / dim;
+            psi = 0.75 - 1. / (2. * dim);
+            sigma = 1. - 1. / dim;
+        } else {
+            rho = 1f64;
+            chi = 2f64;
+            psi = 0.5f64;
+            sigma = 0.5f64;
+        }
+
+        // TODO: add maxfun and wrap the function
+
         let nonzdelt = 0.05f64;
         let zdelt = 0.00025f64;
+
+        let mut sim = Array2::<f64>::zeros((n + 1, n));
         sim.slice_mut(s![0, ..]).assign(&x0);
         for k in 0..n {
             let mut y = x0.clone();
@@ -61,7 +84,6 @@ fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64
             };
             sim.slice_mut(s![k + 1, ..]).assign(&y);
         }
-        let maxiter = 200 * n;
         let mut fsim = Array1::<f64>::zeros(n + 1);
 
         Zip::from(&mut fsim).and(sim.genrows()).apply(|f, s| {
@@ -152,10 +174,6 @@ fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64
         x0.assign(&sim.slice(s![0, ..]));
         // println!("Final value: {}\nArgs:\n{}", fsim[0], x0);
         x0
-    }
-
-    pub fn new(ulps: i64) -> Self {
-        Self {ulps: ulps}
     }
 }
 
