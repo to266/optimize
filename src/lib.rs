@@ -28,13 +28,11 @@ fn order_simplex(mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
 }
 
 impl Minimizer {
-    pub fn minimize<F>(&self, func: F, args: ArrayView1<f64>)
+    pub fn minimize<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
     where
         F: Fn(ArrayView1<f64>) -> f64,
     {
-        let ans = func(args);
-        println!("calculated this: {:?}", ans);
-        self.minimize_neldermead(func, args);
+        self.minimize_neldermead(func, args)
     }
 
     fn minimize_neldermead<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
@@ -151,7 +149,7 @@ impl Minimizer {
             iterations += 1;
         }
         x0.assign(&sim.slice(s![0, ..]));
-        println!("Final value: {}\nArgs:\n{}", fsim[0], x0);
+        // println!("Final value: {}\nArgs:\n{}", fsim[0], x0);
         x0
     }
 
@@ -162,8 +160,22 @@ impl Minimizer {
 
 #[cfg(test)]
 mod tests {
+
+    use super::*;
+    use float_cmp::ApproxEq;
+
+    use ndarray::prelude::*;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn simplex() {
+        let function =
+            |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
+        let minimizer = Minimizer::new();
+        let args = Array::from_vec(vec![3.0, -8.3]);
+        let res = minimizer.minimize(&function, args.view());
+        println!("res: {}", res);
+        assert!(res[0].approx_eq(&1.0, 1e-4, 10));
+        assert!(res[1].approx_eq(&1.0, 1e-4, 10));
     }
+
 }
