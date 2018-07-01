@@ -8,23 +8,8 @@ use float_cmp::{ApproxEqUlps, ApproxOrdUlps};
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-static ULPS: i64 = 1;
-
-pub struct Minimizer {}
-
-fn order_simplex(mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
-    // order sim[0,..] by fsim
-    let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
-    let mut order: Vec<usize> = (0..fsim.len()).collect();
-    order.sort_unstable_by(|&a, &b| fsim[a].approx_cmp_ulps(&fsim[b], ULPS));
-    for (k, s) in order.iter().enumerate() {
-        _tmp.slice_mut(s![k, ..]).assign(&sim.slice(s![*s, ..]));
-    }
-    sim.assign(&_tmp);
-    // order fsim
-    let mut _tmp = fsim.to_vec();
-    _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, ULPS));
-    fsim.assign(&Array1::<f64>::from_vec(_tmp));
+pub struct Minimizer {
+    ulps: i64
 }
 
 impl Minimizer {
@@ -34,6 +19,22 @@ impl Minimizer {
     {
         self.minimize_neldermead(func, args)
     }
+
+fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
+    // order sim[0,..] by fsim
+    let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
+    let mut order: Vec<usize> = (0..fsim.len()).collect();
+    order.sort_unstable_by(|&a, &b| fsim[a].approx_cmp_ulps(&fsim[b], self.ulps));
+    for (k, s) in order.iter().enumerate() {
+        _tmp.slice_mut(s![k, ..]).assign(&sim.slice(s![*s, ..]));
+    }
+    sim.assign(&_tmp);
+    // order fsim
+    let mut _tmp = fsim.to_vec();
+    _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, self.ulps));
+    fsim.assign(&Array1::<f64>::from_vec(_tmp));
+}
+
 
     fn minimize_neldermead<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
     where
@@ -54,7 +55,7 @@ impl Minimizer {
         sim.slice_mut(s![0, ..]).assign(&x0);
         for k in 0..n {
             let mut y = x0.clone();
-            y[k] = match y[k].approx_eq_ulps(&0., ULPS) {
+            y[k] = match y[k].approx_eq_ulps(&0., self.ulps) {
                 true => zdelt,
                 _ => (1. + nonzdelt) * y[k],
             };
@@ -67,7 +68,7 @@ impl Minimizer {
             *f = func(s);
         });
 
-        order_simplex(sim.view_mut(), fsim.view_mut());
+        self.order_simplex(sim.view_mut(), fsim.view_mut());
         let mut iterations: usize = 1;
         let s0 = s![0, ..];
         let sm1 = s![-1, ..];
@@ -75,11 +76,11 @@ impl Minimizer {
         while iterations < maxiter {
             if (&sim.slice(s![1.., ..]) - &sim.slice(s0))
                 .mapv(f64::abs)
-                .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, ULPS) {
+                .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, self.ulps) {
                     true => acc,
                     false => x,
                 })
-                .approx_lt_ulps(&xatol, ULPS)
+                .approx_lt_ulps(&xatol, self.ulps)
             {
                 break;
             }
@@ -94,11 +95,11 @@ impl Minimizer {
 
             let mut doshrink = false;
 
-            if fxr.approx_lt_ulps(&fsim[0], ULPS) {
+            if fxr.approx_lt_ulps(&fsim[0], self.ulps) {
                 let xe = (1. + rho * chi) * &xbar - (rho * chi * &sim.slice(sm1));
                 let fxe = func(xe.view());
 
-                if fxe.approx_lt_ulps(&fxr, ULPS) {
+                if fxe.approx_lt_ulps(&fxr, self.ulps) {
                     sim.slice_mut(sm1).assign(&xe);
                     fsim[n] = fxe;
                 } else {
@@ -106,15 +107,15 @@ impl Minimizer {
                     fsim[n] = fxr;
                 }
             } else {
-                if fxr.approx_lt_ulps(&fsim[n - 1], ULPS) {
+                if fxr.approx_lt_ulps(&fsim[n - 1], self.ulps) {
                     sim.slice_mut(sm1).assign(&xr);
                     fsim[n] = fxr;
                 } else {
-                    if fxr.approx_lt_ulps(&fsim[n], ULPS) {
+                    if fxr.approx_lt_ulps(&fsim[n], self.ulps) {
                         let xc = (1. + psi * rho) * &xbar - psi * rho * &sim.slice(sm1);
                         let fxc = func(xc.view());
 
-                        if fxc.approx_gt_ulps(&fxr, ULPS) {
+                        if fxc.approx_gt_ulps(&fxr, self.ulps) {
                             doshrink = true;
                         } else {
                             sim.slice_mut(sm1).assign(&xc);
@@ -124,7 +125,7 @@ impl Minimizer {
                         let xcc = (1. - psi) * &xbar + psi * &sim.slice(sm1);
                         let fxcc = func(xcc.view());
 
-                        if fxcc.approx_lt_ulps(&fsim[n], ULPS) {
+                        if fxcc.approx_lt_ulps(&fsim[n], self.ulps) {
                             sim.slice_mut(sm1).assign(&xcc);
                             fsim[n] = fxcc;
                         } else {
@@ -145,7 +146,7 @@ impl Minimizer {
                 }
             }
 
-            order_simplex(sim.view_mut(), fsim.view_mut());
+            self.order_simplex(sim.view_mut(), fsim.view_mut());
             iterations += 1;
         }
         x0.assign(&sim.slice(s![0, ..]));
@@ -153,8 +154,8 @@ impl Minimizer {
         x0
     }
 
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(ulps: i64) -> Self {
+        Self {ulps: ulps}
     }
 }
 
@@ -164,13 +165,11 @@ mod tests {
     use super::*;
     use float_cmp::ApproxEq;
 
-    use ndarray::prelude::*;
-
     #[test]
     fn simplex() {
         let function =
             |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
-        let minimizer = Minimizer::new();
+        let minimizer = Minimizer::new(1);
         let args = Array::from_vec(vec![3.0, -8.3]);
         let res = minimizer.minimize(&function, args.view());
         println!("res: {}", res);
