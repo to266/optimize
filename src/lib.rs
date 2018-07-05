@@ -1,5 +1,10 @@
+// #![deny(missing_docs)]
+
 #[macro_use(s)]
 extern crate ndarray;
+
+#[macro_use]
+extern crate derive_builder;
 
 extern crate float_cmp;
 extern crate num_traits;
@@ -8,22 +13,48 @@ use float_cmp::{ApproxEqUlps, ApproxOrdUlps};
 use ndarray::prelude::*;
 use ndarray::Zip;
 
-pub struct Minimizer {
-    ulps: i64,
+pub trait Minimizer {
+    fn minimize<F: Fn(ArrayView1<f64>) -> f64>(
+        &self,
+        func: F,
+        args: ArrayView1<f64>,
+    ) -> Array1<f64>;
 }
 
-impl Minimizer {
-    pub fn new(ulps: i64) -> Self {
-        Self { ulps: ulps }
-    }
+struct WrappedFunction<F: Fn(ArrayView1<f64>) -> f64> {
+    num: usize,
+    func: F,
+}
 
-    pub fn minimize<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
-    where
-        F: Fn(ArrayView1<f64>) -> f64,
-    {
-        self.minimize_neldermead(func, args)
+impl<F: Fn(ArrayView1<f64>) -> f64> WrappedFunction<F> {
+    fn call(&mut self, arg: ArrayView1<f64>) -> f64 {
+        self.num += 1;
+        (self.func)(arg)
     }
+}
 
+#[derive(Builder, Debug)]
+pub struct NelderMead {
+    #[builder(default = "1")]
+    pub ulps: i64,
+
+    #[builder(default = "None")]
+    pub maxiter: Option<usize>,
+
+    #[builder(default = "None")]
+    pub maxfun: Option<usize>,
+
+    #[builder(default = "false")]
+    pub adaptive: bool,
+
+    #[builder(default = "1e-4f64")]
+    pub xtol: f64,
+
+    #[builder(default = "1e-4f64")]
+    pub ftol: f64,
+}
+
+impl NelderMead {
     fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
         // order sim[0,..] by fsim
         let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
@@ -38,23 +69,28 @@ impl Minimizer {
         _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, self.ulps));
         fsim.assign(&Array1::<f64>::from_vec(_tmp));
     }
+}
 
-    fn minimize_neldermead<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
+impl Minimizer for NelderMead {
+    fn minimize<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
     where
         F: Fn(ArrayView1<f64>) -> f64,
     {
+        let mut func = WrappedFunction { num: 0, func: func };
         let mut x0 = Array1::<f64>::from_iter(args.iter().map(|&v| v as f64));
         let n: usize = x0.len();
-        
-        // TODO: add parameters to the function call
-        let adaptive = false;
-        let xatol = 1e-4f64;
-        let maxiter = 200 * n;
+
+        let adaptive = self.adaptive;
+
+        // TODO: avoid unbound, but otherwise try to only have one of the limits if not two are
+        // specified
+        let maxiter = self.maxiter.unwrap_or_else(|| 200 * n);
+        let maxfun = self.maxfun.unwrap_or_else(|| 200 * n);
 
         let rho: f64;
         let chi: f64;
         let psi: f64;
-        let sigma:f64;
+        let sigma: f64;
 
         if adaptive {
             let dim = n as f64;
@@ -68,8 +104,6 @@ impl Minimizer {
             psi = 0.5f64;
             sigma = 0.5f64;
         }
-
-        // TODO: add maxfun and wrap the function
 
         let nonzdelt = 0.05f64;
         let zdelt = 0.00025f64;
@@ -87,7 +121,7 @@ impl Minimizer {
         let mut fsim = Array1::<f64>::zeros(n + 1);
 
         Zip::from(&mut fsim).and(sim.genrows()).apply(|f, s| {
-            *f = func(s);
+            *f = func.call(s);
         });
 
         self.order_simplex(sim.view_mut(), fsim.view_mut());
@@ -95,14 +129,27 @@ impl Minimizer {
         let s0 = s![0, ..];
         let sm1 = s![-1, ..];
 
-        while iterations < maxiter {
+        loop {
+            if (iterations >= maxiter) || (func.num >= maxfun) {
+                break;
+            }
             if (&sim.slice(s![1.., ..]) - &sim.slice(s0))
                 .mapv(f64::abs)
                 .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, self.ulps) {
                     true => acc,
                     false => x,
                 })
-                .approx_lt_ulps(&xatol, self.ulps)
+                .approx_lt_ulps(&self.xtol, self.ulps)
+            {
+                break;
+            }
+            if (&fsim.slice(s![1..]) - fsim[0])
+                .mapv(f64::abs)
+                .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, self.ulps) {
+                    true => acc,
+                    false => x,
+                })
+                .approx_lt_ulps(&self.ftol, self.ulps)
             {
                 break;
             }
@@ -113,13 +160,13 @@ impl Minimizer {
                 .fold(Array1::<f64>::zeros(n), |acc, x| acc + x) / n as f64;
 
             let xr = &xbar * (rho + 1.) - (&sim.slice(sm1) * rho);
-            let fxr = func(xr.view());
+            let fxr = func.call(xr.view());
 
             let mut doshrink = false;
 
             if fxr.approx_lt_ulps(&fsim[0], self.ulps) {
                 let xe = (1. + rho * chi) * &xbar - (rho * chi * &sim.slice(sm1));
-                let fxe = func(xe.view());
+                let fxe = func.call(xe.view());
 
                 if fxe.approx_lt_ulps(&fxr, self.ulps) {
                     sim.slice_mut(sm1).assign(&xe);
@@ -135,7 +182,7 @@ impl Minimizer {
                 } else {
                     if fxr.approx_lt_ulps(&fsim[n], self.ulps) {
                         let xc = (1. + psi * rho) * &xbar - psi * rho * &sim.slice(sm1);
-                        let fxc = func(xc.view());
+                        let fxc = func.call(xc.view());
 
                         if fxc.approx_gt_ulps(&fxr, self.ulps) {
                             doshrink = true;
@@ -145,7 +192,7 @@ impl Minimizer {
                         }
                     } else {
                         let xcc = (1. - psi) * &xbar + psi * &sim.slice(sm1);
-                        let fxcc = func(xcc.view());
+                        let fxcc = func.call(xcc.view());
 
                         if fxcc.approx_lt_ulps(&fsim[n], self.ulps) {
                             sim.slice_mut(sm1).assign(&xcc);
@@ -162,7 +209,7 @@ impl Minimizer {
                             _tmp *= sigma;
                             _tmp += &sim.slice(s0);
                             sim.slice_mut(sj).assign(&_tmp);
-                            fsim[j] = func(sim.slice(sj).view());
+                            fsim[j] = func.call(sim.slice(sj).view());
                         }
                     }
                 }
@@ -172,7 +219,6 @@ impl Minimizer {
             iterations += 1;
         }
         x0.assign(&sim.slice(s![0, ..]));
-        // println!("Final value: {}\nArgs:\n{}", fsim[0], x0);
         x0
     }
 }
@@ -187,7 +233,11 @@ mod tests {
     fn simplex() {
         let function =
             |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
-        let minimizer = Minimizer::new(1);
+        let minimizer = NelderMeadBuilder::default()
+            .xtol(1e-8f64)
+            .ftol(1e-8f64)
+            .build()
+            .unwrap();
         let args = Array::from_vec(vec![3.0, -8.3]);
         let res = minimizer.minimize(&function, args.view());
         println!("res: {}", res);
