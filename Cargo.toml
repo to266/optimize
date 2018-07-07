@@ -3,6 +3,20 @@ name = "optimize"
 version = "0.1.0"
 authors = ["Tomas Ostasevicius <t.ostasevicius@gmail.com>"]
 
+description = "Crate for numerical optimization"
+readme = "README.md"
+
+homepage = "https://github.com/to266/optimize"
+repository = "https://github.com/to266/optimize.git"
+
+keywords = ["optimize", "non-linear", "optimization", "numerical"]
+categories = ["science"]
+
+license = "MIT/Apache-2.0"
+
+[badges]
+travis-ci = { repository = "to266/optimize" }
+
 [dependencies]
 ndarray = "0.11"
 num-traits = "0.2"

@@ -1,4 +1,38 @@
-// #![deny(missing_docs)]
+//! This crate provides (non-linear) numerical optimization methods. 
+//!
+//! It is heavily based on `scipy.optimize`.
+//!
+//! The crate is actively developed and expanded to include more methods.
+//!
+//! A simple example follows:
+//!
+//! ```
+//! # extern crate ndarray;
+//! # extern crate optimize;
+//! # use ndarray::prelude::*;
+//! # use optimize::{Minimizer, NelderMeadBuilder};
+//! // Define a function that we aim to minimize
+//! let function = |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
+//!
+//! // Create a minimizer using the builder pattern. If some of the parameters are not given, default values are used.
+//! let minimizer = NelderMeadBuilder::default()
+//!     .xtol(1e-6f64)
+//!     .ftol(1e-6f64)
+//!     .maxiter(50000)
+//!     .build()
+//!     .unwrap();
+//!
+//! // Set the starting guess
+//! let args = Array::from_vec(vec![3.0, -8.3]);
+//!
+//! // Run the optimization
+//! let ans = minimizer.minimize(&function, args.view());
+//!
+//! // Print the optimized values
+//! println!("Final optimized arguments: {}", ans);
+//! ```
+
+#![deny(missing_docs)]
 
 #[macro_use(s)]
 extern crate ndarray;
@@ -13,7 +47,10 @@ use float_cmp::{ApproxEqUlps, ApproxOrdUlps};
 use ndarray::prelude::*;
 use ndarray::Zip;
 
+/// A general minimizer trait.
 pub trait Minimizer {
+    /// Minimizes the given function returned scalar value by exploring the parameter space.
+    /// May or may not use numerical differential, depending on particular implementation.
     fn minimize<F: Fn(ArrayView1<f64>) -> f64>(
         &self,
         func: F,
@@ -34,24 +71,34 @@ impl<F: Fn(ArrayView1<f64>) -> f64> WrappedFunction<F> {
 }
 
 #[derive(Builder, Debug)]
+/// A minimizer for a scalar function of one or more variables using the Nelder-Mead algorithm.
 pub struct NelderMead {
+    /// The required number of floating point representations that separate two numbers to consider them
+    /// equal. See crate float_cmp for more information.
     #[builder(default = "1")]
     pub ulps: i64,
 
+    /// The maximum number of iterations to optimize. If neither maxiter nor maxfun are given, both
+    /// default to n*200 where n is the number of parameters to optimize.
     #[builder(default = "None")]
     #[builder(setter(into))]
     pub maxiter: Option<usize>,
 
+    /// The maximum number of function calls used to optimize. If neither maxiter nor maxfun are given, both
+    /// default to n*200 where n is the number of parameters to optimize.
     #[builder(default = "None")]
     #[builder(setter(into))]
     pub maxfun: Option<usize>,
 
+    /// Adapt algorithm parameters to dimensionality of the problem. Useful for high-dimensional minimization.
     #[builder(default = "false")]
     pub adaptive: bool,
 
+    /// Absolute error in function parameters between iterations that is acceptable for convergence.
     #[builder(default = "1e-4f64")]
     pub xtol: f64,
 
+    /// Absolute error in function values between iterations that is acceptable for convergence.
     #[builder(default = "1e-4f64")]
     pub ftol: f64,
 }
