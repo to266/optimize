@@ -39,9 +39,11 @@ pub struct NelderMead {
     pub ulps: i64,
 
     #[builder(default = "None")]
+    #[builder(setter(into))]
     pub maxiter: Option<usize>,
 
     #[builder(default = "None")]
+    #[builder(setter(into))]
     pub maxfun: Option<usize>,
 
     #[builder(default = "false")]
@@ -82,10 +84,18 @@ impl Minimizer for NelderMead {
 
         let adaptive = self.adaptive;
 
-        // TODO: avoid unbound, but otherwise try to only have one of the limits if not two are
-        // specified
-        let maxiter = self.maxiter.unwrap_or_else(|| 200 * n);
-        let maxfun = self.maxfun.unwrap_or_else(|| 200 * n);
+        let maxiter: Option<usize>;
+        let maxfun: Option<usize>;
+        match (self.maxiter, self.maxfun) {
+            (None, None) => {
+                maxiter = Some(200 * n);
+                maxfun = Some(200 * n);
+            }
+            _ => {
+                maxiter = self.maxiter;
+                maxfun = self.maxfun;
+            }
+        }
 
         let rho: f64;
         let chi: f64;
@@ -130,7 +140,8 @@ impl Minimizer for NelderMead {
         let sm1 = s![-1, ..];
 
         loop {
-            if (iterations >= maxiter) || (func.num >= maxfun) {
+            if maxiter.map_or(false, |v| v <= iterations) || maxfun.map_or(false, |v| v <= func.num)
+            {
                 break;
             }
             if (&sim.slice(s![1.., ..]) - &sim.slice(s0))

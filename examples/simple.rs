@@ -11,6 +11,7 @@ pub fn main() {
     let minimizer = NelderMeadBuilder::default()
         .xtol(1e-6f64)
         .ftol(1e-6f64)
+        .maxiter(50000) 
         .build()
         .unwrap();
     let args = Array::from_vec(vec![3.0, -8.3]);
