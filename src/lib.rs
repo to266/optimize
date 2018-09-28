@@ -58,6 +58,18 @@ pub trait Minimizer {
     ) -> Array1<f64>;
 }
 
+/// The Scalar minimizer trait.
+pub trait ScalarMinimizer {
+    /// Finds and returns a minimizer for func, starting at x0.
+    fn minimize<F: Fn(f64) -> f64>(&self, func: F, x0: f64) -> f64;
+}
+
+/// The Bounded scalar minimizer trait.
+pub trait BoundedScalarMinimizer {
+    /// Finds and returns a minimizer for func, searching between left and right.
+    fn minimize<F: Fn(f64) -> f64>(&self, func: F, x0: f64, left: f64, right: f64) -> f64;
+}
+
 struct WrappedFunction<F: Fn(ArrayView1<f64>) -> f64> {
     num: usize,
     func: F,
