@@ -1,12 +1,12 @@
 use ndarray::{ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2, Array, Array1, Array2, Axis};
 use float_cmp::{ApproxOrdUlps};
+use ::Status;
 
 pub struct NelderMead {
-    ulps: i64,
-    max_iter: usize,
-    ftol: f64,
-    xtol: f64,
-    iter: usize
+    pub ulps: i64,
+    pub max_iter: usize,
+    pub ftol: f64,
+    pub xtol: f64,
 }
 
 impl NelderMead {
@@ -16,19 +16,14 @@ impl NelderMead {
             max_iter: 1000,
             ftol: 1e-9,
             xtol: 1e-9,
-            iter: 0
         }
     }
 
-    pub fn max_iter(&mut self, i: usize) -> &mut Self {self.max_iter = i; self}
-    pub fn ftol(&mut self, ftol: f64) -> &mut Self {self.ftol = ftol; self}
-    pub fn xtol(&mut self, xtol: f64) -> &mut Self {self.xtol = xtol; self}
-
-    pub fn minimize(&mut self, f: &Fn(ArrayView1<f64>)->f64, mut x0: ArrayViewMut1<f64>) {
+    pub fn minimize(&mut self, f: &Fn(ArrayView1<f64>)->f64, mut x0: ArrayViewMut1<f64>) -> Status {
         if (x0.scalar_sum() - 1.0).abs() > x0.len() as f64 * ::std::f64::EPSILON {
             panic!("The initial point does not lie on the simplex.");
         }
-
+        let mut status = Status::NotFinished;
         let alpha = 1.0; // > 0
         let gamma = 2.0; // > 1
         let rho = 0.5;  // > 0, < 0.5
@@ -44,11 +39,9 @@ impl NelderMead {
 
         self.order_simplex(x.view_mut(), fx.view_mut());
         let mut tmp: Array1<f64> = Array1::zeros(n);
-        self.iter = 0;
+        let mut iter = 0;
 
-        while self.not_finished(fx.view(), x.view()){
-            self.iter += 1;
-            eprint!("\r{}: {}", self.iter, fx[0]);
+        while status == Status::NotFinished {
 
             let centroid = x.slice(s![..-1, ..]).mean_axis(Axis(0));
             let f_worst = fx[n-1];
@@ -95,8 +88,12 @@ impl NelderMead {
                     self.order_simplex(x.view_mut(), fx.view_mut());
                 }
             }        
+            iter += 1;
+            eprint!("\r{}: {}", iter, fx[0]);
+            status = self.update_status(iter, fx.view(), x.view());
         }
         x0.assign(&x.slice(s![0, ..]));
+        status
     }
 
     /// Calculate the max step size we can take without leaving the simplex.
@@ -114,16 +111,17 @@ impl NelderMead {
     }
 
     #[inline]
-    /// Terminate the algorithm if 
-    /// the best and worst f differ by only a small amount,
-    /// and the best and worst x differ only by a small amount,
-    /// and we haven't crossed the max_iter limit.
-    fn not_finished(&self, f: ArrayView1<f64>, x: ArrayView2<f64>) -> bool {
+    fn update_status(&self, iter: usize, f: ArrayView1<f64>, x: ArrayView2<f64>) -> Status {
         let n = f.len();
-        let ftol = f[n-1] - f[0];
-        let xtol = (&x.slice(s![n-1, ..]) - &x.slice(s![0, ..])).mapv(f64::abs).scalar_sum();
-        self.iter < self.max_iter 
-        && (ftol > self.ftol || xtol > self.xtol)
+        if f[n-1] - f[0] < self.ftol {
+            return Status::FtolConvergence
+        } else if (&x.slice(s![n-1, ..]) - &x.slice(s![0, ..])).mapv(f64::abs).scalar_sum() < self.xtol {
+            return Status::XtolConvergence
+        } else if iter > self.max_iter {
+            return Status::MaxIterReached
+        } else {
+            return Status::NotFinished
+        }
     }
 
     #[inline]
@@ -166,13 +164,14 @@ mod tests {
     #[test]
     fn test_far() {
         let mut nm = NelderMead::new();
-        nm.ftol(1e-9);
-        nm.max_iter(2000);
+        nm.ftol = 1e-9;
+        nm.max_iter = 2000;
         let n = 4;
         let f = |x: ArrayView1<f64>| (&x - &x.mean_axis(Axis(0))).mapv(f64::abs).scalar_sum();
         let mut x0 = Array1::zeros(n);
         x0[1] = 1.0;
-        nm.minimize(&f, x0.view_mut());
+        let exit_status = nm.minimize(&f, x0.view_mut());
+        eprintln!("{:?}", exit_status);
         eprintln!("{:?}", x0);
         let correct = Array1::ones(n) / n as f64;
         assert!(correct.all_close(&x0, 1e-5));
@@ -181,12 +180,13 @@ mod tests {
     #[test]
     fn test_close() {
         let mut nm = NelderMead::new();
-        nm.ftol(1e-9);
-        nm.max_iter(5000);
+        nm.ftol = 1e-9;
+        nm.max_iter = 5000;
         let n = 5;
         let f = |x: ArrayView1<f64>| (&x - &x.mean_axis(Axis(0))).mapv(f64::abs).scalar_sum();        
         let mut x0 = Array1::ones(n) / n as f64;
-        nm.minimize(&f, x0.view_mut());
+        let exit_status = nm.minimize(&f, x0.view_mut());
+        eprintln!("{:?}", exit_status);
         eprintln!("{:?}", x0);
         let correct = Array1::ones(n) / n as f64;
         assert!(correct.all_close(&x0, 1e-5));
