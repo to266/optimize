@@ -32,7 +32,9 @@
 //! println!("Final optimized arguments: {}", ans);
 //! ```
 
-#![deny(missing_docs)]
+// #![deny(missing_docs)]
+// #![feature(test)]
+// extern crate test;
 
 #[macro_use(s)]
 extern crate ndarray;
@@ -42,6 +44,9 @@ extern crate derive_builder;
 
 extern crate float_cmp;
 extern crate num_traits;
+
+pub mod scalar;
+pub mod vector;
 
 use float_cmp::{ApproxEqUlps, ApproxOrdUlps};
 use ndarray::prelude::*;
