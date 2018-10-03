@@ -1,20 +1,17 @@
-extern crate ndarray;
 extern crate optimize;
+extern crate ndarray;
 
+use optimize::vector::NelderMead;
 use ndarray::prelude::*;
 
-use optimize::{Minimizer, NelderMeadBuilder};
+fn main() {
+        let mut nm = NelderMead::new()
+                .ftol(1e-9)
+                .max_iter(5000);
+        let n = 5;
+        let f = |x: ArrayView1<f64>| (&x - &x.mean_axis(Axis(0))).mapv(f64::abs).scalar_sum();        
+        let mut x0 = Array1::ones(n) / n as f64;
+        nm.minimize(&f, x0.view_mut());
 
-pub fn main() {
-    let function =
-        |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
-    let minimizer = NelderMeadBuilder::default()
-        .xtol(1e-6f64)
-        .ftol(1e-6f64)
-        .maxiter(50000) 
-        .build()
-        .unwrap();
-    let args = Array::from_vec(vec![3.0, -8.3]);
-    let ans = minimizer.minimize(&function, args.view());
-    println!("Final optimized arguments: {}", ans);
+        println!("{:?}", x0);
 }

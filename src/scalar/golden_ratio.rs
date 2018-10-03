@@ -11,12 +11,9 @@ pub struct GoldenRatio {
 
 const RATIO: f64 = 2.61803398875;//1.5 + 0.5*f64::sqrt(5.0);
 
-impl super::super::BoundedScalarMinimizer for GoldenRatio {
+impl GoldenRatio {
 
-    fn minimize<F>(&self, func: F, x0: f64, left: f64, right: f64) -> f64
-    where
-        F: Fn(f64) -> f64,
-    {
+    pub fn minimize(&self, func: &Fn(f64) -> f64, left: f64, right: f64) -> f64 {
         let mut min = left;
         let mut max = right;
 
@@ -50,7 +47,6 @@ impl super::super::BoundedScalarMinimizer for GoldenRatio {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::super::BoundedScalarMinimizer;
 
     #[test]
     fn golden_ratio() {
@@ -60,7 +56,7 @@ mod tests {
             .build()
             .unwrap();
         let f = |x: f64| (x-0.2).powi(2);
-        let res = minimizer.minimize(&f, 0.0, -1.0, 1.0);
+        let res = minimizer.minimize(&f, -1.0, 1.0);
 
         println!("res: {}", res);
         assert!( (res - 0.2).abs() <= 1e-7 );
