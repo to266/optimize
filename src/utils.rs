@@ -12,6 +12,7 @@ impl<F: Fn(ArrayView1<f64>) -> f64> WrappedFunction<F> {
     }
 }
 
+/// Performs finite-difference approximation of the gradient of a scalar function.
 pub fn approx_fprime<F>(xk: ArrayView1<f64>, func: F, epsilon: ArrayView1<f64>) -> Array1<f64>
 where
     F: Fn(ArrayView1<f64>) -> f64,
