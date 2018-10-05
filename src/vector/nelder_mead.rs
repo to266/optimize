@@ -24,12 +24,12 @@ impl NelderMead {
             panic!("The initial point does not lie on the simplex.");
         }
         let mut status = Status::NotFinished;
-        let alpha = 1.0; // > 0
-        let gamma = 2.0; // > 1
-        let rho = 0.5;  // > 0, < 0.5
-        let sigma = 0.5; // > 0, < 1
+        let alpha = 1.0; // > 0; reflection multiplier
+        let gamma = 2.0; // > 1; expansion multiplier
+        let rho = 0.1;  // > 0, < 0.5; contraction factor
+        let sigma = 0.5; // > 0, < 1; shrinkage factor
         let n = x0.len();
-        let eps = 1.0 / n as f64;
+        let eps = 1.0;//1.0 / (n*n) as f64;
 
         // initialize array of start points
         let mut x: Array2<f64> = Array::eye(x0.len()) * eps + &x0 * (1.0-eps);
@@ -46,7 +46,7 @@ impl NelderMead {
             let centroid = x.slice(s![..-1, ..]).mean_axis(Axis(0));
             let f_worst = fx[n-1];
 
-            // attempt reflection
+            // attempt reflecting f_worst through the centroid
             let reflected = self.bounded_step(alpha, (&centroid - &x.row(n-1)).view(), centroid.view());
             let f_reflected = f(reflected.view());
 
@@ -54,7 +54,7 @@ impl NelderMead {
                 // reflection successful, re-sort x and fx
                 self.reorder_simplex(x.view_mut(), fx.view_mut(), tmp.view_mut(), f_reflected, reflected);              
 
-            // else attempt expansion
+            // else attempt expanding the reflection beyond the centroid
             } else if f_reflected < fx[0] {
 
                 let expanded = self.bounded_step(gamma, (&centroid - &reflected).view(), centroid.view());
@@ -160,6 +160,8 @@ impl NelderMead {
 mod tests {
     use super::*;
     // use test::Bencher;
+    use rand::thread_rng;
+    use rand::distributions::{Distribution, Normal};
 
     #[test]
     fn test_far() {
@@ -190,6 +192,35 @@ mod tests {
         eprintln!("{:?}", x0);
         let correct = Array1::ones(n) / n as f64;
         assert!(correct.all_close(&x0, 1e-5));
+    }
+
+    #[test]
+    fn test_rebalance() {
+        eprintln!("gotcha");
+        let normal = Normal::new(0.0, 0.01);
+        let mut rng = thread_rng();
+        let t = 250;
+        let k = 500;
+        let iter = normal.sample_iter(&mut rng);
+        let mut x = Array1::ones(k) / k as f64;
+        let mut r = Array1::from_iter(iter.take(t*k)).into_shape((k,t)).unwrap();
+        r.mapv_inplace(f64::exp);
+        
+        let f = |x: ArrayView1<f64>| {
+            let x_ = x.into_shape((x.len(), 1)).unwrap();
+            let ultimo = &r * &x_;
+            let growth = ultimo.sum_axis(Axis(0));
+            let diff = &ultimo/&growth - x_;
+            let tx_cost = diff.mapv(f64::abs).sum_axis(Axis(0)) * 0.002;
+            let log_wealth = (growth - tx_cost).mapv(f64::ln).scalar_sum();
+            -log_wealth
+        };
+
+        let mut nm = NelderMead::new();
+        nm.max_iter = 15000;
+        println!("{:?}", nm.minimize(&f, x.view_mut()));
+
+
     }
 
     // #[bench]

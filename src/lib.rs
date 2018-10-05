@@ -2,6 +2,9 @@
 //!
 //! The crate is actively developed and expanded to include more methods.
 //!
+#[cfg(test)]
+extern crate rand;
+
 
 #[macro_use(s)]
 extern crate ndarray;
