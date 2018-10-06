@@ -1,4 +1,4 @@
-use ndarray::{ArrayView1, ArrayView2, ArrayViewMut1, ArrayViewMut2, Array, Array1, Array2, Axis};
+use ndarray::{ArrayView1, ArrayViewMut1, Array, Array1, Array2, Axis};
 use float_cmp::{ApproxOrdUlps};
 use ::Status;
 
@@ -10,6 +10,7 @@ pub struct NelderMead {
 }
 
 type Simplex = Vec<(f64, Array1<f64>)>;
+type Target = Fn(ArrayView1<f64>)->f64;
 
 impl NelderMead {
     
@@ -22,7 +23,7 @@ impl NelderMead {
         }
     }
 
-    pub fn minimize(&mut self, f: &Fn(ArrayView1<f64>)->f64, mut x0: ArrayViewMut1<f64>) -> Status {
+    pub fn minimize(&mut self, f: &Target, mut x0: ArrayViewMut1<f64>) -> Status {
         if (x0.scalar_sum() - 1.0).abs() > x0.len() as f64 * ::std::f64::EPSILON {
             panic!("The initial point does not lie on the simplex.");
         }
@@ -54,33 +55,20 @@ impl NelderMead {
             let f_reflected = f(reflected.view());
 
             if f_reflected < f_worst && f_reflected > f_best {
-                // reflection successful, re-sort x and fx
                 simplex[n-1] = (f_reflected, reflected);
-
-            // else attempt expanding the reflection beyond the centroid
-            } else if f_reflected < f_best {
-
+            } else if f_reflected < f_best { // try expanding beyond the centroid
                 let expanded = self.bounded_step(gamma, (&centroid - &reflected).view(), centroid.view());
                 let f_expanded = f(expanded.view());
 
                 simplex[n-1] =  if f_expanded < f_reflected {(f_expanded, expanded)} else {(f_reflected, reflected)};
-            // else try a contraction
-            } else {
+            } else { // try a contraction towards the centroid
                 let contracted = &centroid - &(rho * (&centroid - &simplex[n-1].1));
                 let f_contracted = f(contracted.view());
 
                 if f_contracted < f_worst {
                     simplex[n-1] = (f_contracted, contracted);
-
-                // else shrink
-                } else {
-                    let mut iter = simplex.iter_mut();
-                    let (_, x0) = iter.next().unwrap();
-                    for (fi, xi) in iter {
-                        *xi *= sigma;
-                        *xi += &((1.0-sigma) * &x0.view());
-                        *fi = f(xi.view());
-                    }
+                } else { // shrink if all else fails
+                    self.shrink(&mut simplex, sigma, f);
                 }
             }        
             self.order_simplex(&mut simplex);
@@ -90,6 +78,17 @@ impl NelderMead {
         }
         x0.assign(&simplex[0].1);
         status
+    }
+
+    #[inline]
+    fn shrink(&self, simplex: &mut Simplex, sigma: f64, f:&Target) {
+        let mut iter = simplex.iter_mut();
+        let (_, x0) = iter.next().unwrap();
+        for (fi, xi) in iter {
+            *xi *= sigma;
+            *xi += &((1.0-sigma) * &x0.view());
+            *fi = f(xi.view());
+        }
     }
 
     #[inline]
@@ -177,7 +176,6 @@ mod tests {
 
     #[test]
     fn test_rebalance() {
-        eprintln!("gotcha");
         let normal = Normal::new(0.0, 0.01);
         let mut rng = thread_rng();
         let t = 250;
@@ -187,7 +185,7 @@ mod tests {
         let mut r = Array1::from_iter(iter.take(t*k)).into_shape((k,t)).unwrap();
         r.mapv_inplace(f64::exp);
         
-        let f = |x: ArrayView1<f64>| {
+        let f = move |x: ArrayView1<f64>| {
             let x_ = x.into_shape((x.len(), 1)).unwrap();
             let ultimo = &r * &x_;
             let growth = ultimo.sum_axis(Axis(0));
@@ -198,7 +196,7 @@ mod tests {
         };
 
         let mut nm = NelderMead::new();
-        nm.max_iter = 5000;
+        nm.max_iter = 2000;
         println!("{:?}", nm.minimize(&f, x.view_mut()));
     }
 
@@ -211,7 +209,7 @@ mod tests {
             let n = 50;
             let f = |x: ArrayView1<f64>| (&x - &x.mean_axis(Axis(0))).mapv(f64::abs).scalar_sum();        
             let mut x0 = Array1::ones(n) / n as f64;
-            let exit_status = nm.minimize(&f, x0.view_mut());
+            print!("{:?}", nm.minimize(&f, x0.view_mut()));
         });
     }
 

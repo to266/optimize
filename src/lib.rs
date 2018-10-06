@@ -10,7 +10,6 @@ extern crate rand;
 #[cfg(test)]
 extern crate test;
 
-#[macro_use(s)]
 extern crate ndarray;
 
 extern crate float_cmp;
