@@ -2,13 +2,9 @@
 //!
 //! The crate is actively developed and expanded to include more methods.
 //!
-#![feature(test)]
 
 #[cfg(test)]
 extern crate rand;
-
-#[cfg(test)]
-extern crate test;
 
 extern crate ndarray;
 
