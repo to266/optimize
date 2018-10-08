@@ -1,16 +1,8 @@
 # optimize
 
-This crate started as a fork of to266/optimize (optimize on crates.io) but I decided to rewrite it in its entirity. 
-Different optimization methods serve different purposes, and therefore I do not think a minimizer trait is appropriate.
-Every method can have its own signature, stressing the relevance of things like bounds or initial points.
+This crate is a fork of to266/optimize (optimize on crates.io). 
+This version is very unstable and poorly documented to favor rapid development.
 
-Usage:
-
-```
-extern crate optimize;
-use optimize::scalar::GoldenRatio;
-
-let minimizer = GoldenRation::new().ftol(1e-5).xtol(1e-5);
-let min = minimizer.minimize(|x: f64| x*x, -0.5, 0.5);
-println!("minimum found at {}", min);
-```
+ * The project has been restructured into modules for scalar and vector functions
+ * The `Minimize` Trait has been dropped to emphasize the differences between algorithms
+ * Nelder-Mead has seen some optimizations, requiring less memory allocations and less numerical operations per iteration 
