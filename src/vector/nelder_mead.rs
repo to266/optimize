@@ -1,8 +1,10 @@
-//! TODO explain Nelder-mead a bit here.
+//! TODO explain Nelder-mead a bit here. Especialy the convex search region.
 
 use ndarray::{ArrayView1, Array1, Array2};
 use float_cmp::{ApproxOrdUlps};
-use ::Status;
+// use ::Status;
+use Status;
+use vector::{Bound, Target, unbounded_step};
 
 pub struct NelderMead<'a> {
     pub ulps: i64,
@@ -19,13 +21,13 @@ pub struct NelderMead<'a> {
 /// bounded_step checks if the simplex does not walk outside of the convex search region. 
 /// To enforce convex constraints, implement your own version of bounded_step where you 
 /// limit the stepsize in <direction>.
-fn unbounded_step(max_growth: f64, direction: ArrayView1<f64>, from: ArrayView1<f64>) -> Array1<f64> {
-    &from + &(max_growth * &direction)
-}
+// fn unbounded_step(max_growth: f64, direction: ArrayView1<f64>, from: ArrayView1<f64>) -> f64 {
+//     &from + &(max_growth * &direction)
+// }
 
 type Simplex = Vec<(f64, Array1<f64>)>;
-type Target<'a> = Fn(ArrayView1<f64>)->f64 + 'a;
-type Bound<'a> = Fn(f64, ArrayView1<f64>, ArrayView1<f64>) -> Array1<f64> + 'a;
+// type Target<'a> = Fn(ArrayView1<f64>)->f64 + 'a;
+// type Bound<'a> = Fn(f64, ArrayView1<f64>, ArrayView1<f64>) -> Array1<f64> + 'a;
 
 impl<'a> NelderMead<'a> {
     
@@ -59,13 +61,17 @@ impl<'a> NelderMead<'a> {
             let f_best = simplex[0].0;
             eprint!("\r{}: {}", iter, f_best);
 
-            let reflected = (self.bounded_step)(self.alpha, (&centroid - &simplex[n-1].1).view(), centroid.view());
+            let reflect = &centroid - &simplex[n-1].1;
+            let reflect_bound = (self.bounded_step)(self.alpha, reflect.view(), centroid.view());
+            let reflected = &centroid + &(reflect_bound * &reflect);
             let f_reflected = f(reflected.view());
 
             if f_reflected < f_worst && f_reflected > f_best { // try reflecting the worst point through the centroid
                 self.lean_update(&mut simplex, &mut centroid, reflected, f_reflected);
             } else if f_reflected < f_best { // try expanding beyond the centroid
-                let expanded = (self.bounded_step)(self.gamma, (&centroid - &reflected).view(), centroid.view());
+                let expand = &centroid - &reflected;
+                let expand_bound = (self.bounded_step)(self.gamma, expand.view(), centroid.view());
+                let expanded = &centroid + &(expand_bound * &expand);
                 let f_expanded = f(expanded.view());
 
                 if f_expanded < f_reflected {

@@ -7,14 +7,14 @@ use ndarray::prelude::*;
 /// This implementation of bounded-step ensures that only vectors on the standard simplex are considered,
 /// i.e. all elements are positive and sum up to 1.
 #[inline]
-fn bounded_step(max_growth: f64, direction: ArrayView1<f64>, from: ArrayView1<f64>) -> Array1<f64> {
-        let delta = direction.iter().zip(&from)
+fn bounded_step(max_growth: f64, direction: ArrayView1<f64>, from: ArrayView1<f64>) -> f64 {
+        direction.iter().zip(&from)
         .map(|(d,f)| if *d<0.0 {f/d.abs()} else {max_growth})
-        .fold(max_growth, |acc, x| if acc < x {acc} else {x});
+        .fold(max_growth, |acc, x| if acc < x {acc} else {x})
 
-        let vec = (&from + &(delta * &direction)).mapv(|xi| 0f64.max(xi));
-        let s = vec.scalar_sum();
-        vec / s
+        // let vec = (&from + &(delta * &direction)).mapv(|xi| 0f64.max(xi));
+        // let s = vec.scalar_sum();
+        // vec / s
 }
 
 fn main() {
