@@ -1,4 +1,4 @@
-//! This crate provides (non-linear) numerical optimization methods. 
+//! This crate provides (non-linear) numerical optimization methods.
 //!
 //! It is heavily based on `scipy.optimize`.
 //!
