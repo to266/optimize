@@ -1,1 +1,1 @@
-//! This module contains all minimizers for functions with a single argument.
+//! This module contains algorithms that search for local minima of functions along a single dimension.
