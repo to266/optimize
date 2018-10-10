@@ -3,7 +3,7 @@ extern crate optimize;
 
 use ndarray::prelude::*;
 
-use optimize::{Minimizer, NelderMeadBuilder};
+use optimize::vector::NelderMeadBuilder;
 
 pub fn main() {
     let function =

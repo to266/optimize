@@ -10,7 +10,7 @@
 //! # extern crate ndarray;
 //! # extern crate optimize;
 //! # use ndarray::prelude::*;
-//! # use optimize::{Minimizer, NelderMeadBuilder};
+//! # use optimize::vector::NelderMeadBuilder;
 //! // Define a function that we aim to minimize
 //! let function = |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
 //!
@@ -43,9 +43,5 @@ extern crate derive_builder;
 extern crate float_cmp;
 extern crate num_traits;
 
-pub use minimizer::Minimizer;
-pub use nelder_mead::NelderMeadBuilder;
-
-mod minimizer;
-mod nelder_mead;
-mod utils;
+pub mod scalar;
+pub mod vector;
