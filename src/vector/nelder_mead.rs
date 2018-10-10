@@ -1,18 +1,8 @@
 
-use float_cmp::{ApproxEqUlps, ApproxOrdUlps};
+use float_cmp::{ApproxOrdUlps, ApproxEqUlps};
 use ndarray::prelude::*;
-use ndarray::Zip;
 
-/// A general minimizer trait.
-pub trait Minimizer {
-    /// Minimizes the given function returned scalar value by exploring the parameter space.
-    /// May or may not use numerical differential, depending on particular implementation.
-    fn minimize<F: Fn(ArrayView1<f64>) -> f64>(
-        &self,
-        func: F,
-        args: ArrayView1<f64>,
-    ) -> Array1<f64>;
-}
+type Simplex = Vec<(f64, Array1<f64>)>;
 
 struct WrappedFunction<F: Fn(ArrayView1<f64>) -> f64> {
     num: usize,
@@ -60,178 +50,153 @@ pub struct NelderMead {
 }
 
 impl NelderMead {
-    fn order_simplex(&self, mut sim: ArrayViewMut2<f64>, mut fsim: ArrayViewMut1<f64>) {
-        // order sim[0,..] by fsim
-        let mut _tmp = unsafe { Array2::<f64>::uninitialized(sim.dim()) };
-        let mut order: Vec<usize> = (0..fsim.len()).collect();
-        order.sort_unstable_by(|&a, &b| fsim[a].approx_cmp_ulps(&fsim[b], self.ulps));
-        for (k, s) in order.iter().enumerate() {
-            _tmp.slice_mut(s![k, ..]).assign(&sim.slice(s![*s, ..]));
-        }
-        sim.assign(&_tmp);
-        // order fsim
-        let mut _tmp = fsim.to_vec();
-        _tmp.sort_unstable_by(|&a, b| a.approx_cmp_ulps(b, self.ulps));
-        fsim.assign(&Array1::<f64>::from_vec(_tmp));
+
+    pub fn minimize_x0<F>(&self, func: F, x0: ArrayView1<f64>) -> Array1<f64>
+    where F: Fn(ArrayView1<f64>) -> f64 {
+        let n = x0.len();
+        let eps = 0.05;
+        let mut init_simplex = Array2::default((n+1, n));
+        init_simplex.slice_mut(s![0, ..]).assign(&x0);
+        init_simplex.slice_mut(s![1.., ..]).assign(&(Array::eye(n) * eps + &x0 * (1.0-eps)));
+
+        self.minimize_simplex(func, init_simplex)
     }
-    
-    pub fn minimize<F>(&self, func: F, args: ArrayView1<f64>) -> Array1<f64>
-    where
-        F: Fn(ArrayView1<f64>) -> f64,
-    {
+
+    pub fn minimize_simplex<F>(&self, func: F, init_simplex: Array2<f64>) -> Array1<f64>
+    where F: Fn(ArrayView1<f64>) -> f64 {
+        let n = init_simplex.shape()[1];
         let mut func = WrappedFunction { num: 0, func: func };
-        let mut x0 = Array1::<f64>::from_iter(args.iter().map(|&v| v as f64));
-        let n: usize = x0.len();
+        let mut simplex = init_simplex.outer_iter().map(|xi| (func.call(xi), xi.to_owned())).collect::<Simplex>();
+        self.order_simplex(&mut simplex);
+        let mut centroid = self.centroid(&simplex);
 
-        let adaptive = self.adaptive;
+        let (maxiter, maxfun, rho, chi, psi, sigma) = self.initialize_parameters(n);
 
-        let maxiter: Option<usize>;
-        let maxfun: Option<usize>;
-        match (self.maxiter, self.maxfun) {
-            (None, None) => {
-                maxiter = Some(200 * n);
-                maxfun = Some(200 * n);
-            }
-            _ => {
-                maxiter = self.maxiter;
-                maxfun = self.maxfun;
-            }
-        }
+        let mut iterations = 1;
 
-        let rho: f64;
-        let chi: f64;
-        let psi: f64;
-        let sigma: f64;
+        while !self.finished(&simplex, iterations, maxiter, func.num, maxfun) {
 
-        if adaptive {
-            let dim = n as f64;
-            rho = 1f64;
-            chi = 1f64 + 2. / dim;
-            psi = 0.75 - 1. / (2. * dim);
-            sigma = 1. - 1. / dim;
-        } else {
-            rho = 1f64;
-            chi = 2f64;
-            psi = 0.5f64;
-            sigma = 0.5f64;
-        }
+            let f_worst = simplex[n-1].0;
+            let f_best = simplex[0].0;
+            eprintln!("{}: {}", iterations, f_best);
 
-        let nonzdelt = 0.05f64;
-        let zdelt = 0.00025f64;
+            let reflected = &centroid + &(rho * &(&centroid - &simplex[n-1].1));
+            let f_reflected = func.call(reflected.view());
 
-        let mut sim = Array2::<f64>::zeros((n + 1, n));
-        sim.slice_mut(s![0, ..]).assign(&x0);
-        for k in 0..n {
-            let mut y = x0.clone();
-            y[k] = match y[k].approx_eq_ulps(&0., self.ulps) {
-                true => zdelt,
-                _ => (1. + nonzdelt) * y[k],
-            };
-            sim.slice_mut(s![k + 1, ..]).assign(&y);
-        }
-        let mut fsim = Array1::<f64>::zeros(n + 1);
+            if f_reflected < f_worst && f_reflected > f_best { // try reflecting the worst point through the centroid
+                eprintln!("reflect");
+                self.lean_update(&mut simplex, &mut centroid, reflected, f_reflected);
+            } else if f_reflected < f_best { // try expanding beyond the centroid
+                let expanded = &centroid + &(chi * &(&centroid - &reflected));
+                let f_expanded = func.call(expanded.view());
 
-        Zip::from(&mut fsim).and(sim.genrows()).apply(|f, s| {
-            *f = func.call(s);
-        });
-
-        self.order_simplex(sim.view_mut(), fsim.view_mut());
-        let mut iterations: usize = 1;
-        let s0 = s![0, ..];
-        let sm1 = s![-1, ..];
-
-        loop {
-            if maxiter.map_or(false, |v| v <= iterations) || maxfun.map_or(false, |v| v <= func.num)
-            {
-                break;
-            }
-            if (&sim.slice(s![1.., ..]) - &sim.slice(s0))
-                .mapv(f64::abs)
-                .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, self.ulps) {
-                    true => acc,
-                    false => x,
-                })
-                .approx_lt_ulps(&self.xtol, self.ulps)
-            {
-                break;
-            }
-            if (&fsim.slice(s![1..]) - fsim[0])
-                .mapv(f64::abs)
-                .fold(0., |acc, &x| match acc.approx_gt_ulps(&x, self.ulps) {
-                    true => acc,
-                    false => x,
-                })
-                .approx_lt_ulps(&self.ftol, self.ulps)
-            {
-                break;
-            }
-
-            let xbar = sim.slice(s![..-1, ..])
-                .genrows()
-                .into_iter()
-                .fold(Array1::<f64>::zeros(n), |acc, x| acc + x) / n as f64;
-
-            let xr = &xbar * (rho + 1.) - (&sim.slice(sm1) * rho);
-            let fxr = func.call(xr.view());
-
-            let mut doshrink = false;
-
-            if fxr.approx_lt_ulps(&fsim[0], self.ulps) {
-                let xe = (1. + rho * chi) * &xbar - (rho * chi * &sim.slice(sm1));
-                let fxe = func.call(xe.view());
-
-                if fxe.approx_lt_ulps(&fxr, self.ulps) {
-                    sim.slice_mut(sm1).assign(&xe);
-                    fsim[n] = fxe;
+                if f_expanded < f_reflected {
+                eprintln!("expand");
+                    self.lean_update(&mut simplex, &mut centroid, expanded, f_expanded);
                 } else {
-                    sim.slice_mut(sm1).assign(&xr);
-                    fsim[n] = fxr;
+                    self.lean_update(&mut simplex, &mut centroid, reflected, f_reflected);
+                eprintln!("reflect");
                 }
-            } else {
-                if fxr.approx_lt_ulps(&fsim[n - 1], self.ulps) {
-                    sim.slice_mut(sm1).assign(&xr);
-                    fsim[n] = fxr;
-                } else {
-                    if fxr.approx_lt_ulps(&fsim[n], self.ulps) {
-                        let xc = (1. + psi * rho) * &xbar - psi * rho * &sim.slice(sm1);
-                        let fxc = func.call(xc.view());
+            } else { // try a contraction towards the centroid
+                let contracted = &centroid + &(psi * (&centroid - &simplex[n-1].1));
+                let f_contracted = func.call(contracted.view());
 
-                        if fxc.approx_gt_ulps(&fxr, self.ulps) {
-                            doshrink = true;
-                        } else {
-                            sim.slice_mut(sm1).assign(&xc);
-                            fsim[n] = fxc;
-                        }
-                    } else {
-                        let xcc = (1. - psi) * &xbar + psi * &sim.slice(sm1);
-                        let fxcc = func.call(xcc.view());
-
-                        if fxcc.approx_lt_ulps(&fsim[n], self.ulps) {
-                            sim.slice_mut(sm1).assign(&xcc);
-                            fsim[n] = fxcc;
-                        } else {
-                            doshrink = true;
-                        }
-                    }
-
-                    if doshrink {
-                        for j in 1..n + 1 {
-                            let sj = s![j, ..];
-                            let mut _tmp = &sim.slice(sj) - &sim.slice(s0);
-                            _tmp *= sigma;
-                            _tmp += &sim.slice(s0);
-                            sim.slice_mut(sj).assign(&_tmp);
-                            fsim[j] = func.call(sim.slice(sj).view());
-                        }
-                    }
+                if f_contracted < f_worst {
+                    self.lean_update(&mut simplex, &mut centroid, contracted, f_contracted);
+                    eprintln!("contract");
+                } else { // shrink if all else fails
+                    eprintln!("shrink");
+                    self.shrink(&mut simplex, &mut func, sigma);
+                    self.order_simplex(&mut simplex);
+                    centroid = self.centroid(&mut simplex);
                 }
-            }
-
-            self.order_simplex(sim.view_mut(), fsim.view_mut());
+            }        
             iterations += 1;
+            eprintln!("{:?}", simplex.iter().map( |(f,_)| *f).collect::<Vec<f64>>());
         }
-        x0.assign(&sim.slice(s![0, ..]));
-        x0
+        simplex.remove(0).1
+    }
+
+    /// Helper function to keep the main loop clean. Resolves default values that can
+    /// only be known after the minimize function is called.
+    #[inline]
+    fn initialize_parameters(&self, n: usize) -> (usize, usize, f64, f64, f64, f64) {
+        let maxiter = match self.maxiter {
+            Some(x) => x,
+            None => 200 * n
+        };
+        let maxfun = match self.maxfun {
+            Some(x) => x,
+            None => 200 * n
+        };
+
+        let (rho, chi, psi, sigma) = if self.adaptive {
+            let dim = n as f64;
+            (1.0, 1.0 + 2.0 / dim, 0.75 - 1.0 / (2.0 * dim), 1.0 - 1.0 / dim)
+        } else {
+            (1.0, 2.0, 0.5, 0.5)
+        };
+
+        (maxiter, maxfun, rho, chi, psi, sigma)
+    }
+
+    #[inline]
+    fn finished(&self, simplex: &Simplex, iterations: usize, maxiter: usize, nfeval: usize, maxfun: usize) -> bool {
+        let n = simplex.len();
+        eprintln!("{},{},{},{}", iterations, nfeval, simplex[n-1].0 - simplex[0].0, (&simplex[n-1].1 - &simplex[0].1).mapv(f64::abs).scalar_sum());
+        if iterations > maxiter || nfeval > maxfun {
+            true
+        } else if simplex[n-1].0 - simplex[0].0 < self.ftol 
+        && (&simplex[n-1].1 - &simplex[0].1).mapv(f64::abs).scalar_sum() < n as f64 * self.xtol {
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Update the centroid effiently, knowing only one value changed.
+    /// The pattern-defeating sort of order_simplex is allready efficient
+    /// given that we inserted a single out-of-place value in a sorted vec.
+    #[inline]
+    fn lean_update(&self, simplex: &mut Simplex, centroid: &mut Array1<f64>, xnew: Array1<f64>, fnew: f64) {
+        let n = simplex.len();
+        *centroid += &(&xnew / (n-1) as f64);
+        simplex[n-1] = (fnew, xnew);
+        self.order_simplex(simplex);
+        *centroid -= &(&simplex[n-1].1 / (n-1) as f64);
+    }
+
+    /// shrink all points towards the best point.
+    /// Assumes the simplex is ordered.
+    #[inline]
+    fn shrink<F>(&self, simplex: &mut Simplex, f: &mut WrappedFunction<F>, sigma: f64) 
+    where F: Fn(ArrayView1<f64>) -> f64 {
+        let mut iter = simplex.iter_mut();
+        let (_, x0) = iter.next().unwrap();
+        for (fi, xi) in iter {
+            *xi *= sigma;
+            *xi += &((1.0 - sigma) * &x0.view());
+            *fi = f.call(xi.view());
+        }
+    }
+
+    /// calculate the centroid of all points but the worst one.
+    /// Assumes that the simplex is ordered.
+    #[inline]
+    fn centroid(&self, simplex: &Simplex) -> Array1<f64> {
+        let n = simplex.len();
+        let mut centroid = Array1::zeros(simplex[0].1.len());
+        for (_, xi) in simplex.iter().take(n-1) {
+            centroid += xi;
+        }
+        centroid / (n-1) as f64
+    }
+
+    /// This sorting algorithm should have a runtime of O(n) if only one new element is inserted.
+    /// After a shrinkage, the runtime is O(n log n).
+    #[inline]
+    fn order_simplex(&self, simplex: &mut Simplex) {
+        simplex.sort_unstable_by(|&(fa, _), &(fb, _)| fa.approx_cmp_ulps(&fb, self.ulps));
     }
 }
 
@@ -246,12 +211,12 @@ mod tests {
         let function =
             |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
         let minimizer = NelderMeadBuilder::default()
-            .xtol(1e-8f64)
-            .ftol(1e-8f64)
+            .xtol(1e-8)
+            .ftol(1e-8)
             .build()
             .unwrap();
         let args = Array::from_vec(vec![3.0, -8.3]);
-        let res = minimizer.minimize(&function, args.view());
+        let res = minimizer.minimize_x0(&function, args.view());
         println!("res: {}", res);
         assert!(res[0].approx_eq(&1.0, 1e-4, 10));
         assert!(res[1].approx_eq(&1.0, 1e-4, 10));
