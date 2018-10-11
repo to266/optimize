@@ -15,6 +15,6 @@ pub fn main() {
         .build()
         .unwrap();
     let args = Array::from_vec(vec![3.0, -8.3]);
-    let ans = minimizer.minimize_x0(&function, args.view());
+    let ans = minimizer.minimize(&function, args.view());
     println!("Final optimized arguments: {}", ans);
 }

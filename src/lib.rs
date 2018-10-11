@@ -26,7 +26,7 @@
 //! let args = Array::from_vec(vec![3.0, -8.3]);
 //!
 //! // Run the optimization
-//! let ans = minimizer.minimize_x0(&function, args.view());
+//! let ans = minimizer.minimize(&function, args.view());
 //!
 //! // Print the optimized values
 //! println!("Final optimized arguments: {}", ans);

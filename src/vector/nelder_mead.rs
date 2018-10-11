@@ -30,7 +30,7 @@
 //!     .build()
 //!     .unwrap();
 //! let args = Array::from_vec(vec![3.0, -8.3]);
-//! let res = minimizer.minimize_x0(&function, args.view());
+//! let res = minimizer.minimize(&function, args.view());
 //! println!("res: {}", res);
 //! ```
 
@@ -89,7 +89,7 @@ impl NelderMead {
     /// Search for the value minimizing `func` given an initial guess
     /// in the form of a point. The algorithm will explore the variable
     /// space without constraints.
-    pub fn minimize_x0<F>(&self, func: F, x0: ArrayView1<f64>) -> Array1<f64>
+    pub fn minimize<F>(&self, func: F, x0: ArrayView1<f64>) -> Array1<f64>
     where F: Fn(ArrayView1<f64>) -> f64 {
         let n = x0.len();
         let eps = 0.05;
@@ -270,7 +270,7 @@ mod tests {
             .build()
             .unwrap();
         let args = Array::from_vec(vec![3.0, -8.3]);
-        let res = minimizer.minimize_x0(&function, args.view());
+        let res = minimizer.minimize(&function, args.view());
         println!("res: {}", res);
         assert!(res[0].approx_eq(&1.0, 1e-4, 10));
         assert!(res[1].approx_eq(&1.0, 1e-4, 10));
