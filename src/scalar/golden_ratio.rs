@@ -1,24 +1,23 @@
-/// Golden ratio is to minimization what bisection is to root finding.
-/// GoldenRatio searches within an interval for a local minimum. At 
-/// every iteration, the interval is decreased in size by a constant 
-/// factor, until the desired precision is obtained.
-/// 
-/// This algorithm is guaranteed to converge on a local minimum in a 
-/// finite amount of steps under very light smoothess criteria for the
-/// target function.
-/// 
-/// In an iteration, the target function is calculated at 4 points:
-///         +---------+----+---------+
-/// iter 1  a         b    c         d
-/// The interval for the next iteration is chosen to be [a,c] if b<c,
-/// and [b,d] if c<=b. The distances b-a, c-b, and d-c are chosen in such
-/// a way that 3 out of 4 points can be reused, and only 1 new function 
-/// evaluation is required in the next iteration. If b<c this looks like: 
-/// 
-///         +---------+----+---------+
-/// iter 1  a         b    c         d
-///         +----+----+----+
-/// iter 2  a    b    c    d
+//! Golden ratio is to minimization what bisection is to root finding.
+//! GoldenRatio searches within an interval for a local minimum. At 
+//! every iteration, the interval is decreased in size by a constant 
+//! factor, until the desired precision is obtained.
+//! 
+//! This algorithm is guaranteed to converge on a local minimum in a 
+//! finite amount of steps under very light smoothess criteria for the
+//! target function.
+//! 
+//! In an iteration, the target function is calculated at 4 points:
+//!         +---------+----+---------+
+//! iter 1  a         b    c         d
+//! The interval for the next iteration is chosen to be [a,c] if b<c,
+//! and [b,d] if c<=b. The distances b-a, c-b, and d-c are chosen in such
+//! a way that 3 out of 4 points can be reused, and only 1 new function 
+//! evaluation is required in the next iteration. If b<c this looks like: 
+//!         +---------+----+---------+
+//! iter 1  a         b    c         d
+//!         +----+----+----+
+//! iter 2  a    b    c    d
 
 #[derive(Builder, Debug)]
 pub struct GoldenRatio {
