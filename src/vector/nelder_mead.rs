@@ -189,14 +189,10 @@ impl NelderMead {
     #[inline]
     fn finished(&self, simplex: &Simplex, iterations: usize, maxiter: usize, nfeval: usize, maxfun: usize) -> bool {
         let n = simplex.len();
-        if iterations > maxiter || nfeval > maxfun {
-            true
-        } else if simplex[n-1].0 - simplex[0].0 < self.ftol 
-        && (&simplex[n-1].1 - &simplex[0].1).mapv(f64::abs).scalar_sum() < n as f64 * self.xtol {
-            true
-        } else {
-            false
-        }
+        iterations > maxiter 
+        || nfeval > maxfun 
+        || ( simplex[n-1].0 - simplex[0].0 < self.ftol 
+             && (&simplex[n-1].1 - &simplex[0].1).mapv(f64::abs).scalar_sum() < n as f64 * self.xtol )
     }
 
     /// Update the centroid effiently, knowing only one value changed.
