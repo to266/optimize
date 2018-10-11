@@ -32,7 +32,10 @@ pub struct GoldenRatio {
     pub max_iter: usize,
 }
 
-const RATIO: f64 = 2.61803398875;//1.5 + 0.5*f64::sqrt(5.0);
+/// The golden ratio is 1.0 : 0.5 + .5*5f64.sqrt(). Therefore we need the ratio
+/// 1.0 / (1.5 + .5*5f64.sqrt()) to calculate the fractions in which to divide
+/// intervals.
+const RATIO: f64 = 2.618033988749895; // 1.5 + 0.5*5f64.sqrt();
 
 impl GoldenRatio {
     
