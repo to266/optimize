@@ -36,20 +36,10 @@
 
 use float_cmp::ApproxOrdUlps;
 use ndarray::prelude::*;
+use ::utils::WrappedFunction;
 
 type Simplex = Vec<(f64, Array1<f64>)>;
 
-struct WrappedFunction<F: Fn(ArrayView1<f64>) -> f64> {
-    num: usize,
-    func: F,
-}
-
-impl<F: Fn(ArrayView1<f64>) -> f64> WrappedFunction<F> {
-    fn call(&mut self, arg: ArrayView1<f64>) -> f64 {
-        self.num += 1;
-        (self.func)(arg)
-    }
-}
 
 #[derive(Builder, Debug)]
 /// A minimizer for a scalar function of one or more variables using the Nelder-Mead algorithm.
