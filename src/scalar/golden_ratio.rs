@@ -48,7 +48,6 @@ impl GoldenRatio {
     where F: Fn(f64) -> f64 {
         let left = x0 + self.explore(&func, x0, -1.0);
         let right = x0 + self.explore(&func, x0, 1.0);
-        println!("{}, {}",left, right);
         self.minimize_bracket(func, left, right)
     }
 
@@ -129,5 +128,18 @@ mod tests {
 
         println!("res: {}", res);
         assert!( (res - 0.2).abs() <= 1e-7);
+    }
+
+    #[test]
+    fn monotone_x0() {
+        let minimizer = GoldenRatioBuilder::default()
+            .xtol(1e-7)
+            .max_iter(1000)
+            .build().unwrap();
+        let f = |x: f64| x;
+        let res = minimizer.minimize(&f, 10.0);
+
+        println!("res: {}", res);
+        assert!( res.is_nan());
     }
 }
