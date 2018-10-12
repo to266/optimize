@@ -39,9 +39,33 @@ const RATIO: f64 = 2.618033988749895; // 1.5 + 0.5*5f64.sqrt();
 
 impl GoldenRatio {
     
-    /// The main minimization routine. Searches for the minimum of `func`
-    /// between `left` and `right`.
-    pub fn minimize<F>(&self, func: F, left: f64, right: f64) -> f64 
+    /// Search for the minimum of `func` around `x0`.
+    /// The search region is expanded in both directions until an expansion
+    /// leads to an increase in the function value at the bound of the region.
+    pub fn minimize<F>(&self, func: F, x0: f64) -> f64 
+    where F: Fn(f64) -> f64 {
+        let left = x0 + self.explore(&func, x0, -1.0);
+        let right = x0 + self.explore(&func, x0, 1.0);
+        println!("{}, {}",left, right);
+        self.minimize_bracket(func, left, right)
+    }
+
+    /// increase step until func stops decreasing, then return step
+    fn explore<F>(&self, func: F, x0: f64, mut step: f64) -> f64 
+    where F: Fn(f64) -> f64 {
+        let mut fprev = func(x0);
+        let mut fstepped = func(x0 + step);
+
+        while fstepped < fprev {
+            step *= 2.0;
+            fprev = fstepped;
+            fstepped = func(x0 + step);
+        } 
+        step
+    }
+
+    /// Search for the minimum of `func` between `left` and `right`.
+    pub fn minimize_bracket<F>(&self, func: F, left: f64, right: f64) -> f64 
     where F: Fn(f64) -> f64 {
         let mut min = left;
         let mut max = right;
@@ -80,13 +104,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn golden_ratio() {
+    fn golden_ratio_bracketed() {
         let minimizer = GoldenRatioBuilder::default()
             .xtol(1e-7)
             .max_iter(1000)
             .build().unwrap();
         let f = |x: f64| (x-0.2).powi(2);
-        let res = minimizer.minimize(&f, -1.0, 1.0);
+        let res = minimizer.minimize_bracket(&f, -1.0, 1.0);
+
+        println!("res: {}", res);
+        assert!( (res - 0.2).abs() <= 1e-7);
+    }
+
+    #[test]
+    fn golden_ratio_x0() {
+        let minimizer = GoldenRatioBuilder::default()
+            .xtol(1e-7)
+            .max_iter(1000)
+            .build().unwrap();
+        let f = |x: f64| (x-0.2).powi(2);
+        let res = minimizer.minimize(&f, 10.0);
 
         println!("res: {}", res);
         assert!( (res - 0.2).abs() <= 1e-7);
