@@ -27,6 +27,7 @@ pub struct GoldenRatio {
     pub xtol: f64,
 
     /// The maximum number of iterations before the search terminates.
+    /// The number of function evaluations is 2+<number of iterations>.
     /// Bigger is more precise.
     #[builder(default = "1000")]
     pub max_iter: usize,
@@ -37,6 +38,7 @@ pub struct GoldenRatio {
 /// intervals.
 const RATIO: f64 = 2.618033988749895; // 1.5 + 0.5*5f64.sqrt();
 
+// TODO improve the 'search around x0' to waste less function evaluations
 impl GoldenRatio {
     
     /// Search for the minimum of `func` around `x0`.
