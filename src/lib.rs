@@ -45,3 +45,5 @@ extern crate num_traits;
 
 pub mod scalar;
 pub mod vector;
+
+mod utils;
