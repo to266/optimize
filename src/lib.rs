@@ -11,6 +11,7 @@
 //! # extern crate optimize;
 //! # use ndarray::prelude::*;
 //! # use optimize::vector::NelderMeadBuilder;
+//! # use optimize::minimizer::Minimizer;
 //! // Define a function that we aim to minimize
 //! let function = |x: ArrayView1<f64>| (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2);
 //!
@@ -29,7 +30,7 @@
 //! let ans = minimizer.minimize(&function, args.view());
 //!
 //! // Print the optimized values
-//! println!("Final optimized arguments: {}", ans);
+//! println!("Final optimized arguments: {}", ans.minimum_value.unwrap());
 //! ```
 
 #![deny(missing_docs)]
@@ -43,6 +44,7 @@ extern crate derive_builder;
 extern crate float_cmp;
 extern crate num_traits;
 
+pub mod minimizer;
 pub mod scalar;
 pub mod vector;
 

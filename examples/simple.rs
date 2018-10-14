@@ -3,6 +3,7 @@ extern crate optimize;
 
 use ndarray::prelude::*;
 
+use optimize::minimizer::Minimizer;
 use optimize::vector::NelderMeadBuilder;
 
 pub fn main() {
@@ -11,10 +12,10 @@ pub fn main() {
     let minimizer = NelderMeadBuilder::default()
         .xtol(1e-6f64)
         .ftol(1e-6f64)
-        .maxiter(50000) 
+        .maxiter(50000)
         .build()
         .unwrap();
     let args = Array::from_vec(vec![3.0, -8.3]);
     let ans = minimizer.minimize(&function, args.view());
-    println!("Final optimized arguments: {}", ans);
+    println!("Final optimized arguments: {:?}", ans);
 }
