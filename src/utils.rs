@@ -17,15 +17,13 @@ pub fn approx_fprime<F>(x: ArrayView1<f64>, f: F, epsilon: ArrayView1<f64>) -> A
 where F: Fn(ArrayView1<f64>) -> f64 {
     let f0 = f(x);
     let mut dir = x.to_owned();
-    let mut grad = x.to_owned();
-    for i in 0..x.len() {
+    Array1::from_shape_fn(x.len(), |i| {
         dir[i] += epsilon[i];
-        grad[i] = ( f(dir.view()) - f0 ) / epsilon[i];
+        let gi = ( f(dir.view()) - f0 ) / epsilon[i];
         dir[i] -= epsilon[i];
-    }
-    grad
+        gi
+    })
 }
-
 
 #[cfg(test)]
 mod tests {
