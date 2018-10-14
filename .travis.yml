@@ -7,3 +7,9 @@ rust:
 matrix:
     allow_failure:
         - rust: nightly
+    fast_finish: true
+    - rust: stable
+      script:
+          - cargo build --verbose
+          - cargo test --verbose
+          - cargo fmt -- --write-mode=diff
