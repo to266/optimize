@@ -19,6 +19,8 @@
 //!         +----+----+----+
 //! iter 2  a    b    c    d
 
+use std::f64;
+
 #[derive(Builder, Debug)]
 pub struct GoldenRatio {
     /// The width of the interval at which convergence is satisfactory. 
@@ -27,7 +29,8 @@ pub struct GoldenRatio {
     pub xtol: f64,
 
     /// The maximum number of iterations before the search terminates.
-    /// The number of function evaluations is 2+<number of iterations>.
+    /// The number of function evaluations in a bracket search is 
+    /// 2 + <number of iterations>.
     /// Bigger is more precise.
     #[builder(default = "1000")]
     pub max_iter: usize,
@@ -46,14 +49,17 @@ impl GoldenRatio {
     /// leads to an increase in the function value at the bound of the region.
     pub fn minimize<F>(&self, func: F, x0: f64) -> f64 
     where F: Fn(f64) -> f64 {
-        let left = x0 + self.explore(&func, x0, -1.0);
-        let right = x0 + self.explore(&func, x0, 1.0);
+        let left = x0 + self.explore(&func, x0, true);
+        let right = x0 + self.explore(&func, x0, false);
         self.minimize_bracket(func, left, right)
     }
 
     /// increase step until func stops decreasing, then return step
-    fn explore<F>(&self, func: F, x0: f64, mut step: f64) -> f64 
+    fn explore<F>(&self, func: F, x0: f64, explore_left: bool) -> f64 
     where F: Fn(f64) -> f64 {
+        let mut step = if explore_left {-1.} else {1.} *
+            f64::powi(2., f64::log2(f64::EPSILON + x0.abs()) as i32) * f64::EPSILON;
+
         let mut fprev = func(x0);
         let mut fstepped = func(x0 + step);
 
@@ -68,8 +74,8 @@ impl GoldenRatio {
     /// Search for the minimum of `func` between `left` and `right`.
     pub fn minimize_bracket<F>(&self, func: F, left: f64, right: f64) -> f64 
     where F: Fn(f64) -> f64 {
-        let mut min = left;
-        let mut max = right;
+        let mut min = left.max(f64::MIN);
+        let mut max = right.min(f64::MAX);
         let mut iter = 0;
 
         let mut x_b = min + (max - min) / RATIO;
@@ -140,6 +146,6 @@ mod tests {
         let res = minimizer.minimize(&f, 10.0);
 
         println!("res: {}", res);
-        assert!( res.is_nan());
+        assert!( res.is_infinite() );
     }
 }
