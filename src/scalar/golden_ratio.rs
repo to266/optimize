@@ -41,12 +41,15 @@ pub struct GoldenRatio {
 /// intervals.
 const RATIO: f64 = 2.618033988749895; // 1.5 + 0.5*5f64.sqrt();
 
-// TODO improve the 'search around x0' to waste less function evaluations
 impl GoldenRatio {
     
     /// Search for the minimum of `func` around `x0`.
     /// The search region is expanded in both directions until an expansion
     /// leads to an increase in the function value at the bound of the region.
+    /// 
+    /// Currently `minimize` makes, in some specific cases, at most  around 2000 
+    /// additional calls to `func` to find a bracketing interval. For more details
+    /// see https://github.com/to266/optimize/issues/11
     pub fn minimize<F>(&self, func: F, x0: f64) -> f64 
     where F: Fn(f64) -> f64 {
         let left = x0 + self.explore(&func, x0, true);
