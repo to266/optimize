@@ -5,16 +5,38 @@
 /// MATHEMATICS OF  COMPUTATION, VOLUME 35,  NUMBER 151 JULY 1980, PAGES 773-782
 ///
 use ndarray::prelude::*;
+use std::collections::VecDeque;
 
 #[derive(Builder, Debug)]
 pub struct LBFGS {
     /// Smaller is more precise.
-    #[builder(default = "1e-8")]
+    #[builder(default = "1e-12")]
     pub gtol: f64,
 
+    /// The maximum number of iterations. The gradient is evaluated once per iteration.
     /// Larger is more precise.
     #[builder(default = "1500")]
     pub max_iter: usize,
+
+    /// The number of datapoints to use to estimate the inverse hessian.
+    /// Larger is more precise. If `m` is larger than `x0.len()`, then
+    /// `x0.len()` is used.
+    #[builder(default = "5")]
+    pub m: usize,
+
+    /// The maximum step to be taken in the direction determined by the Quasi-Newton
+    /// method.
+    #[builder(default = "2.0")]
+    pub max_step: f64,
+
+    /// The tolerance on x used to terminate the line search.
+    /// Smaller is more precise.
+    #[builder(default = "1e-8")]
+    pub xtol: f64,
+
+    /// The maximum number of function evaluations.
+    #[builder(default = "1500")]
+    pub max_feval: usize,
 }
 
 impl LBFGS {
@@ -24,9 +46,10 @@ impl LBFGS {
         G: Fn(ArrayView1<f64>) -> Array1<f64>,
     {
         let mut iter = 0;
-        let m = x0.len().min(5);
+        let mut feval_count = 0;
+        let m = x0.len().min(self.m).max(1);
 
-        let mut hist = RobinVec::new();
+        let mut hist = VecDeque::new();
 
         let mut x = x0.to_owned();
         let mut g = grad(x.view());
@@ -34,9 +57,15 @@ impl LBFGS {
         loop {
             let dir = self.quasi_update(&g, &hist);
             let a = {
-                let min = ::scalar::GoldenRatioBuilder::default().build().unwrap();
-                let f = |a: f64| func((&x + &(a * &dir)).view());
-                min.minimize_bracket(&f, -2.0, 0.0)
+                let min = ::scalar::GoldenRatioBuilder::default()
+                    .xtol(self.xtol)
+                    .build()
+                    .unwrap();
+                let f = |a: f64| {
+                    feval_count += 1;
+                    func((&x + &(a * &dir)).view())
+                };
+                min.minimize_bracket(f, -self.max_step, 0.0)
             };
             let x_new = &x + &(a * &dir);
             let g_new = grad(x_new.view());
@@ -47,11 +76,18 @@ impl LBFGS {
 
             iter += 1;
 
-            if r.is_nan() || iter > self.max_iter || g_new.mapv(f64::abs).scalar_sum() < self.gtol {
+            if r.is_nan()
+                || iter > self.max_iter
+                || feval_count > self.max_feval
+                || g_new.mapv(f64::abs).scalar_sum() < self.gtol
+            {
                 break;
             }
 
-            hist.push((s, y, r), m);
+            while hist.len() >= m {
+                hist.pop_front();
+            }
+            hist.push_back((s, y, r));
 
             x = x_new;
             g = g_new;
@@ -60,10 +96,12 @@ impl LBFGS {
         x
     }
 
+    /// Calculate the Quasi-Newton direction H*g efficiently, where g
+    /// is the gradient and H is the *inverse* hessian.
     fn quasi_update(
         &self,
         grad: &Array1<f64>,
-        hist: &RobinVec<(Array1<f64>, Array1<f64>, f64)>,
+        hist: &VecDeque<(Array1<f64>, Array1<f64>, f64)>,
     ) -> Array1<f64> {
         let mut q = grad.to_owned();
         let mut a = Vec::with_capacity(hist.len());
@@ -88,65 +126,6 @@ impl LBFGS {
     }
 }
 
-#[derive(Debug)]
-struct RobinVec<T> {
-    i0: usize,
-    vec: Vec<T>,
-}
-
-use std::iter::Chain;
-use std::slice;
-
-impl<T> RobinVec<T> {
-    pub fn new() -> RobinVec<T> {
-        RobinVec {
-            i0: 0,
-            vec: Vec::new(),
-        }
-    }
-
-    pub fn iter(&self) -> Chain<slice::Iter<T>, slice::Iter<T>> {
-        self.vec[self.i0..].iter().chain(self.vec[..self.i0].iter())
-    }
-
-    pub fn len(&self) -> usize {
-        self.vec.len()
-    }
-
-    pub fn push(&mut self, el: T, size: usize) {
-        let n = self.vec.len();
-        if size > n {
-            if self.i0 == 0 {
-                self.vec.push(el);
-            } else {
-                self.vec.insert(self.i0, el);
-                self.i0 += 1;
-            }
-        } else if size == n {
-            self.vec[self.i0] = el;
-            self.i0 = (self.i0 + 1) % n;
-        } else {
-            panic!("needs implementation")
-        }
-    }
-}
-
-use std::ops::{Index, IndexMut};
-impl<T> Index<usize> for RobinVec<T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &T {
-        &self.vec[(index + self.i0) % self.vec.len()]
-    }
-}
-
-impl<T> IndexMut<usize> for RobinVec<T> {
-    fn index_mut(&mut self, index: usize) -> &mut T {
-        let n = self.vec.len();
-        &mut self.vec[(index + self.i0) % n]
-    }
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -163,19 +142,5 @@ mod test {
         let xmin = min.minimize(&f, &g, x0.view());
         println!("{:?}", xmin);
         assert!(xmin.all_close(&center, 1e-5))
-    }
-
-    #[test]
-    fn robin() {
-        let mut r = RobinVec::new();
-        for i in 1..16 {
-            r.push(i, 4);
-        }
-        println!("{:?}", r);
-        for (i, &ri) in r.iter().enumerate() {
-            println!("{}", ri);
-            assert_eq!(i + 12, ri);
-            assert_eq!(ri, r[i]);
-        }
     }
 }
