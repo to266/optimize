@@ -40,6 +40,20 @@ pub struct LBFGS {
 }
 
 impl LBFGS {
+    /// Minimize `func` starting in `x0` using a finite difference approximation
+    /// for the gradient. For more control over the approximation of the gradient,
+    /// you can use `minimize` with you own approximation.
+    pub fn minimize_approx_grad<F>(&self, func: F, x0: ArrayView1<f64>) -> Array1<f64>
+    where
+        F: Fn(ArrayView1<f64>) -> f64,
+    {
+        let eps = Array1::ones(x0.len()) * 1e-9;
+        let eps_view = eps.view();
+        let grad = |x: ArrayView1<f64>| ::utils::approx_fprime(x, &func, eps_view);
+        self.minimize(&func, &grad, x0)
+    }
+
+    /// Minimize `func` starting in `x0` using `grad` as the gradient of `func`.
     pub fn minimize<F, G>(&self, func: F, grad: G, x0: ArrayView1<f64>) -> Array1<f64>
     where
         F: Fn(ArrayView1<f64>) -> f64,
@@ -49,7 +63,7 @@ impl LBFGS {
         let mut feval_count = 0;
         let m = x0.len().min(self.m).max(1);
 
-        let mut hist = VecDeque::new();
+        let mut hist = VecDeque::with_capacity(m);
 
         let mut x = x0.to_owned();
         let mut g = grad(x.view());
@@ -140,6 +154,17 @@ mod test {
         };
         let x0 = Array1::ones(center.len());
         let xmin = min.minimize(&f, &g, x0.view());
+        println!("{:?}", xmin);
+        assert!(xmin.all_close(&center, 1e-5))
+    }
+
+    #[test]
+    fn minimize_approx() {
+        let center = arr1(&[0.9, 1.3, 0.5]);
+        let min = LBFGSBuilder::default().build().unwrap();
+        let f = |x: ArrayView1<f64>| (&x - &center).mapv(|xi| -(-xi * xi).exp()).scalar_sum();
+        let x0 = Array1::ones(center.len());
+        let xmin = min.minimize_approx_grad(&f, x0.view());
         println!("{:?}", xmin);
         assert!(xmin.all_close(&center, 1e-5))
     }
