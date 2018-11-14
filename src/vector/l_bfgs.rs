@@ -1,14 +1,75 @@
-/// Limited-memory BFGS Quasi-Newton optimizer. Uses the two-loop recursion to
+use ndarray::prelude::*;
+use std::collections::VecDeque;
+
+/// Limited-memory BFGS Quasi-Newton optimizer.
+///
+/// This implementation uses the two-loop recursion to
 /// calculate the quasi-inverse-hessian, as formulated in
 ///
 /// Jorge Nocedal. Updating Quasi-Newton Matrices With Limited Storage.
 /// MATHEMATICS OF  COMPUTATION, VOLUME 35,  NUMBER 151 JULY 1980, PAGES 773-782
 ///
-use ndarray::prelude::*;
-use std::collections::VecDeque;
-
+/// This optimizer is known to be particularly suited for optimizing
+/// high-dimensional convex functions.
+///
+/// # Examples
+///
+/// ### With an exact gradient
+///
+/// ```
+/// # extern crate ndarray;
+/// use ndarray::prelude::*;
+///
+/// # extern crate optimize;
+/// use optimize::vector::LBFGSBuilder;
+///
+/// # fn main() {
+/// // Use the builder pattern to create a minimizer object
+/// // with default values for the parameters
+/// let min = LBFGSBuilder::default().build().unwrap();
+///
+/// // The function that is to be minimized, and an exact gradient function
+/// let center = arr1(&[0.9, 1.3, 0.5]);
+/// let f = |x: ArrayView1<f64>| (&x - &center).mapv(|xi| xi.powi(4)).scalar_sum();
+/// let g = |x: ArrayView1<f64>| 4.0 * (&x - &center).mapv(|xi| xi.powi(3));
+/// let x0 = Array1::ones(center.len());
+///
+/// // do the actual minimization
+/// let xmin = min.minimize(&f, &g, x0.view());
+///
+/// println!("{:?}", xmin);
+/// assert!(xmin.all_close(&center, 1e-4))
+/// # }
+/// ```
+///
+/// ### Or with a finite-difference approximation
+///
+/// ```
+/// # extern crate ndarray;
+/// # use ndarray::prelude::*;
+/// # extern crate optimize;
+/// # use optimize::vector::LBFGSBuilder;
+///
+/// # fn main() {
+/// // Use the builder pattern to create a minimizer object
+/// // with default values for the parameters
+/// let min = LBFGSBuilder::default().build().unwrap();
+///
+/// // The function that is to be minimized, and an exact gradient function
+/// let center = arr1(&[0.9, 1.3, 0.5]);
+/// let f = |x: ArrayView1<f64>| (&x - &center).mapv(|xi| xi.powi(4)).scalar_sum();
+/// let x0 = Array1::ones(center.len());
+///
+/// // do the actual minimization
+/// let xmin = min.minimize_approx_grad(&f, x0.view());
+///
+/// println!("{:?}", xmin);
+/// assert!(xmin.all_close(&center, 1e-4))
+/// # }
+/// ```
 #[derive(Builder, Debug)]
 pub struct LBFGS {
+    /// The tolerance on the gradient used to terminate the optimization.
     /// Smaller is more precise.
     #[builder(default = "1e-12")]
     pub gtol: f64,
@@ -112,6 +173,7 @@ impl LBFGS {
 
     /// Calculate the Quasi-Newton direction H*g efficiently, where g
     /// is the gradient and H is the *inverse* hessian.
+    #[inline]
     fn quasi_update(
         &self,
         grad: &Array1<f64>,
